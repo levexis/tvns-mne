@@ -1,0 +1,236 @@
+#!/usr/bin/env python
+
+import matplotlib as plt
+import mne
+import numpy as np
+import os
+from autoreject import AutoReject
+from autoreject import get_rejection_threshold
+from clean_events import Participant, check_stim_artifacts
+
+from mne.preprocessing import (ICA, create_eog_epochs, create_ecg_epochs,
+                               corrmap)
+
+# For interactive plotting, load the following backend:
+plt.use('Qt5Agg')
+
+
+#becomes new Subject(8)
+subj = 6
+participant = Participant(subj)
+DATA_DIR = os.path.expanduser('~') + '/win-vr/eegdata'
+CHARTS = True
+
+# # IMPORT AND RE-REFERENCE EEG FILE
+
+# Read raw EEG file and visually inspect for bad channels
+raw_eeg = mne.io.read_raw_bdf(f"{DATA_DIR}/{participant.filename}", preload=True)  # Load bdf file to enable re-referencing"
+raw_eeg.set_eeg_reference(ref_channels=['EXG5', 'EXG6'])  # Take average of mastoids as reference
+# drop the mastoid reference channels so they don't interfere EOG analysis
+raw_eeg.drop_channels(['EXG5','EXG6'])
+#raw_eeg.plot_psd(area_mode='range',tmax=10, average=False)
+#raw_eeg.plot()
+
+### DEFINE ELECTRODE MAP
+
+# Specify specific montage used
+biosemi_montage = mne.channels.make_standard_montage("biosemi64")
+raw_eeg.set_montage(biosemi_montage, on_missing='ignore')
+# set all external electrodes to type EOG for ICA.
+raw_eeg.set_channel_types({'EXG1': 'eog', 'EXG2': 'eog', 'EXG3': 'eog', 'EXG4': 'eog'}) # 'EXG5': 'eog', 'EXG6': 'eog','EXG7': 'eog', 'EXG8': 'eog'})
+raw_eeg.drop_channels(participant.exclude_channels)  # Define at top if extra channels need to be excluded
+#raw_eeg.plot_sensors(ch_type='eeg')
+
+# interpolate bad channels (note this is also done by autoreject so can probably remove this
+raw_eeg.info['bads'].extend(participant.bad_channels)
+# # get an error here, apply later - bug? ValueError: array must not contain infs or NaNs
+# raw_eeg.interpolate_bads()
+
+# # PREPROCESS EVENTS
+
+events = mne.find_events(raw_eeg, initial_event=True, shortest_event=1)
+#event div
+event_id = {
+    'tvnsblock': 31,
+    'shamblock': 32,
+    'stim/on': 33,
+    'stim/off': 34,
+    'break/start': 45,
+    'break/stop': 46,
+}
+
+# process block signals and add them to subsequent stim events so you can find which trial atarted
+off_events = []
+block = ''
+for event in events:
+    if event[2] == event_id['tvnsblock'] :
+        block = 'tvnsblock'
+    elif event[2] == event_id['shamblock']:
+        block = 'shamblock'
+    if event[2] == event_id['stim/off']:
+        event[2] += event_id[block]
+        off_events.append(event)
+
+#convert to np array
+events = participant.load_clean_events(raw_eeg)
+off_events = participant.get_offset_events()
+
+off_event_id={
+    'tvns/off': 31+34,
+    'sham/off': 32+34}
+
+check_stim_artifacts(off_events)
+
+# now drop stim channel
+raw_eeg.drop_channels(['EXG7', 'EXG8']) # drop the stimulation electrodes, remainder are used for EOG artifacts
+
+#only now I can interpolate the raw data without an error (bug?)
+#raw_eeg.interpolate_bads() THIS SHOULD BE DONE BY AUTOREJECT
+
+############BAND AND NOTCH FILTERS #################
+
+#now bandpass filter
+filtered_eeg = raw_eeg.filter(0.1, 40., fir_design='firwin')  # Filter between 0.1Hz and 40Hz
+
+# remove 25Hz stim artifact and 50Hz mains artifact, iir = butterworth filter
+filtered_eeg = filtered_eeg.notch_filter([25],method='iir')
+filtered_eeg = filtered_eeg.notch_filter([50],method='iir')
+
+#filtered_eeg.plot_psd(area_mode='range',average=False)
+#filtered_eeg.plot()
+
+
+############## ICA ###############################
+
+# Set up ICA
+method = 'picard' #'fastica'
+
+n_components = .99 # should be .99 % of variance
+max_iter = 1000
+random_state = 69  # Random seed
+ica = ICA(n_components=n_components, method=method, random_state=random_state,max_iter=max_iter)
+
+# ica works better with a 1Hz high pass filter,
+# note: I think this is done by ica.apply so superfluous
+# can make ica_eeg = filtered_eeg to reverse this
+ica_eeg = raw_eeg.filter(1, 40, fir_design='firwin')
+
+picks = mne.pick_types(ica_eeg.info, eeg=True, eog=True,
+                       stim=False)
+
+# Fit ICA
+ica.fit(ica_eeg, picks=picks, decim=None, reject=None)
+
+# Check ICA components
+#ica.plot_components()
+
+# Check EOG events
+# todo: will this miss saccades as blink artifacts are much higher amplitude. ICA components look same if only using EXG2
+eog_epochs = create_eog_epochs(ica_eeg, baseline=(-0.5, 0))
+#eog_epochs.plot_image(combine='mean')
+#eog_epochs.average().plot_joint()
+
+# Use EOG epochs to reject ICA components ------------------------------------------------------------------------------
+ica.exclude = []
+# find which ICs match the EOG pattern
+eog_indices, eog_scores = ica.find_bads_eog(ica_eeg)
+ica.exclude = eog_indices
+
+# check for saccades as these don't always get spotted
+saccade_scores = (np.absolute(eog_scores[0])+np.absolute(eog_scores[1]))/2
+blink_scores = (np.absolute(eog_scores[0])+np.absolute(eog_scores[1]))/2
+
+#arbitrary cut off at abs score of .5, do blinks and saccade channels. Need to check this is not too sensitive
+eog_indices.extend(np.where(saccade_scores > 0.5)[0])
+eog_indices.extend(np.where(blink_scores > 0.5)[0])
+#remove duplicates
+eog_indices = list(set(eog_indices))
+
+print (f"Excluding {len(eog_indices)} ICA components due to EOG artifact scores")
+
+# plot all the topomaps
+# ica.plot_components()
+
+# barplot of ICA component "EOG match" scores
+#ica.plot_scores(eog_scores)
+
+# plot diagnostics
+#ica.plot_properties(filtered_eeg, picks=eog_indices)
+
+# plot ICs applied to raw data, with EOG matches highlighted
+#ica.plot_sources(filtered_eeg, show_scrollbars=False)
+
+# plot ICs applied to the averaged EOG epochs, with EOG matches highlighted
+# shows epochs
+#ica.plot_sources(eog_epochs)
+
+# Finally, apply the ICA exclude to the actual data
+ica.apply(filtered_eeg)
+
+#filtered_eeg.plot()
+
+# # CREATE EPOCHS
+
+# In[ ]:
+
+
+
+tmin, tmax = (-4, 1)  # -5 to + 5
+baseline = (-4, -3.6) # before stimulation starts
+
+# linear detrended epochs
+
+epochs = mne.Epochs(filtered_eeg, off_events, event_id=off_event_id, tmin=tmin, tmax=tmax, baseline=baseline,
+                    detrend=1, preload=True)
+
+# adjust for stimulation robot etc latency
+epochs.shift_time(participant.get_offset_events())
+
+
+### AUTOREJECT OUTLIERS ####
+
+ar = AutoReject()
+# DISABLE - this takes ages to return and has no bad epochs
+epochs_clean = ar.fit_transform(epochs)
+
+#epochs_clean.plot()
+
+
+### SAVE CLEANED EPOCHS
+
+epochs_clean.save(f'out_epochs/cleaned_stimoff_epoch_sub-{participant.part_str}-epo.fif', overwrite=True)
+
+#visual inspection for artifact removal
+#epochs_clean.plot_psd(fmin=1., fmax=40., average=True, bandwidth=2)
+
+
+# # crop to time period of interest for ERP identification
+# crop -5 to +5 down to 0,-0.75 for analysis
+
+shorter_epochs = epochs.copy().crop(tmin=-0, tmax=.75, include_tmax=True)
+
+# # COMPARE ERPS
+
+# In[ ]:
+
+
+evoked_tvns = shorter_epochs['tvns'].average()
+evoked_sham = shorter_epochs['sham'].average()
+
+#save evoked
+mne.write_evokeds(f'out_evoked/evoked_tvns_sham_P{participant.part_str}-ave.fif', [evoked_tvns,evoked_sham])
+
+
+#evoked_tvns.plot(picks='eeg')
+#weird signal on C6, remove C6
+#evoked_sham.plot_topomap()
+#evoked_tvns.plot_topomap()
+
+
+#mne.viz.plot_compare_evokeds([evoked_tvns, evoked_sham], picks='eeg', combine='mean')
+# with confidence intervals
+evoked = dict(tvns=list(shorter_epochs['tvns'].iter_evoked()),
+              sham=list(shorter_epochs['sham'].iter_evoked()))
+mne.viz.plot_compare_evokeds(evoked, combine='mean', picks='eeg')
+
+
