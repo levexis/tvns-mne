@@ -37,9 +37,8 @@ _BAD_EVENTS_BLOCKS = {8: [False, False, 'shamblock', 'invalid', 'invalid', 'nost
 # can also exclude epochs using annotations
 _ANNOTATIONS = {16: [['852.98828125', '51.279296875', 'BAD_no_stim']]}  # [ startime, duration, 'BAD_reason']
 # bad channels, these will be interpolated
-_BAD_CHANNELS = { 6: ['C6'] }
-
-
+_BAD_CHANNELS = { 1: ['FT7'],
+                  6: ['C6'], }
 # fine adjustment for offset event (if needed)
 _OFFSETS ={}
 
