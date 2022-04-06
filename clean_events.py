@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env ipython
 # coding: utf-8
 
 # # Load modules
@@ -10,6 +10,7 @@ import matplotlib as plt
 import mne
 import numpy as np
 import os
+import sys
 import getopt
 
 
@@ -18,7 +19,7 @@ plt.use('Qt5Agg')
 
 DATA_DIR = os.path.expanduser('~') + '/win-vr/eegdata'
 # these can also be passed in as command line options
-CHARTS = True
+CHARTS = False
 SUBJ = 13
 
 #default offset for offevent
@@ -26,7 +27,8 @@ _OFFSET=-230/1000
 
 #### definition of participant exceptions etc ###
 # list of checked participants, allows validation that each subject has been visually inspected
-_CHECKED = [6]
+_CHECKED = [6,10]
+
 # False = default block behaviour
 # invalid will be ignored (bad trial), if block start events are correct then
 # simpler to use annotations to exclude a bad trial and this is then shown on plots
@@ -34,6 +36,10 @@ _CHECKED = [6]
 _BAD_EVENTS_BLOCKS = {8: [False, False, 'shamblock', 'invalid', 'invalid', 'nostim', False, False, False, False]}
 # can also exclude epochs using annotations
 _ANNOTATIONS = {16: [['852.98828125', '51.279296875', 'BAD_no_stim']]}  # [ startime, duration, 'BAD_reason']
+# bad channels, these will be interpolated
+_BAD_CHANNELS = { 6: ['C6'] }
+
+
 # fine adjustment for offset event (if needed)
 _OFFSETS ={}
 
@@ -47,7 +53,10 @@ class Participant:
         self.part_str = str(part_num).zfill(3)
         self.filename = f"P{self.part_str}.bdf"
         self.exclude_channels = []
-        self.bad_channels = []
+        if (part_num in _BAD_CHANNELS):
+            self.bad_channels =_BAD_CHANNELS[part_num]
+        else:
+            self.bad_channels = []
         # default
         if part_num % 2:
             self.first_condition = 'shamblock'
@@ -55,7 +64,12 @@ class Participant:
         else:
             self.first_condition = 'tvnsblock'
             self.last_condition = 'shamblock'
+        # if events are missing and we have more than 8 pseudo blocks, or bad trials
         self.bad_blocks = part_num in _BAD_EVENTS_BLOCKS
+        if part_num in _OFFSETS:
+            self.stim_offset = _OFFSETS[part_num]
+        else:
+            self.stim_offset = _OFFSET
 
     def get_block_type(self, block_number):
         # false will return the normal condition, use just to exclude an invalid block
@@ -73,12 +87,7 @@ class Participant:
             return mne.Annotations(annotations[:, 0],
                                    annotations[:, 1],
                                    annotations[:, 2])
-    # timing of offset event has a latency due to arduino solenoid
-    def get_event_offset(self):
-        if self.number in _OFFSETS:
-            return _OFFSETS[self.number]
-        # else return default
-        return _OFFSET
+
 
     def load_clean_events(self,raw_eeg):
         events = mne.find_events(raw_eeg, initial_event=True, shortest_event=1)
@@ -87,7 +96,7 @@ class Participant:
         return self.events
 
     def get_offset_events(self):
-        return get_block_events('stim/off', self)
+        return get_block_events('stim/off', self)[0]
 
 
 # process block signals and add them to subsequent stim events so you can find which trial atarted
@@ -185,8 +194,7 @@ def check_stim_artifacts(epochs,show_charts = False):
             len(epochs_no_stim.events)))
     else:
             print(f"Stim sized artifact found all in all {len(epochs)} epochs")
-
-
+    return epochs_no_stim
 
 def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
     participant = Participant(part_number)
@@ -231,7 +239,7 @@ def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
     epochs = mne.Epochs(raw_eeg, off_events, event_id=off_event_id, tmin=-4, tmax=1, baseline=(None, -3.6),
                detrend=1, preload=True)
     # shift event timing to allow for latency from arduino button press
-    epochs.shift_time(participant.get_event_offset())
+    epochs.shift_time(participant.stim_offset)
 
     if show_charts:
         epochs.pick_channels(['EXG7','EXG8']).plot()
@@ -243,5 +251,26 @@ def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
     return epochs
 
 if __name__ == '__main__':
+    # get options, default is no charts -p6 -c also switches on charts
+    argv=sys.argv[1:]
+    if (len(argv)):
+        CHARTS=False
+        try:
+            opts,args= getopt.getopt(argv,"p:c",["charts="])
+        except:
+            print ("invalid command line arguments:")
+            print ("./clean_events -- -p <participant number> [--charts=<y/n>]")
+            sys.exit()
+        for opt, arg in opts:
+            if opt == '-h':
+                print("./clean_events -- -p <participant number> [--charts=<y/n>]")
+            elif opt == '-p':
+                SUBJ = int(arg)
+            elif opt in ["-c","--charts"]:
+                if arg=="n":
+                    CHARTS = False
+                else:
+                    CHARTS = True
+
     epochs = check_participant(SUBJ,CHARTS)
     print (f"good epochs: {len(epochs)}")
