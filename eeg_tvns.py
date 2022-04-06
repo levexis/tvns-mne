@@ -179,8 +179,8 @@ def pre_process (participant_number, show_charts = False):
 
     ar = AutoReject(random_state=101)
 
-#    epochs_clean = ar.fit_transform(epochs)
-    epochs_clean = epochs
+    epochs_clean = ar.fit_transform(epochs)
+#    epochs_clean = epochs
 
     #epochs_clean.plot()
 
