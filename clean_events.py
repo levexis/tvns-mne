@@ -13,6 +13,8 @@ import os
 import sys
 import getopt
 
+#31 tvns - 65 off
+#32 sham - 66 off
 
 # For interactive plotting, load the following backend:
 plt.use('Qt5Agg')
@@ -27,18 +29,49 @@ _OFFSET=-230/1000
 
 #### definition of participant exceptions etc ###
 # list of checked participants, allows validation that each subject has been visually inspected
-_CHECKED = [6,10]
+_CHECKED = [1,2,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]# 3 & 5 dropped due to insufficient data
 
+# participants where the order was reversed
+_REVERSE_ORDER = [9,19] #is 9 really reversed?
 # False = default block behaviour
 # invalid will be ignored (bad trial), if block start events are correct then
 # simpler to use annotations to exclude a bad trial and this is then shown on plots
-# otherwise array length must match define all blocks that are extracted
-_BAD_EVENTS_BLOCKS = {8: [False, False, 'shamblock', 'invalid', 'invalid', 'nostim', False, False, False, False]}
+# otherwise array length must match define all blocks that are extracted. use 'invalid' to exclude a block.
+_BAD_EVENTS_BLOCKS = {8: ['shamblock','shamblock','shamblock','shamblock','shamblock','tvnsblock','tvnsblock','tvnsblock', 'tvnsblock', 'shamblock', 'shamblock'],
+                      }#9: [False, False, False, False, False, False, False, False, False, False, False, False, False]}
 # can also exclude epochs using annotations
-_ANNOTATIONS = {16: [['852.98828125', '51.279296875', 'BAD_no_stim']]}  # [ startime, duration, 'BAD_reason']
+_ANNOTATIONS = {1 : [[2236,2281-2236,'noisy exclude?']],
+                3: [['25.412109375','551.828125','BAD_no_stim_artifact']],
+                9: [[265,605+254-265,'first_run_might_be_the_bad_one'],
+                    [994,1489+77-994,'BAD_tvns_loc_incorrect']], #incorrect tvns electrode postion but was the order reversed?
+                11: [['21.6796875','251.994140625','BAD_block_1_no_stim_artifact'],
+                     ['701.998046875',577,'BAD_run2_participant_no_stim']],  # spans 2 blocks
+                12: [[2300,554, 'BAD_run4_no_stim_artifact']],#last 2 blocks, experimenters mention fixing the tVNS unable to identify valid trials
+                16: [['852.98828125', '51.279296875', 'BAD_no_stim']]}  # [ startime, duration, 'BAD_reason']
 # bad channels, these will be interpolated
 _BAD_CHANNELS = { 1: ['FT7'],
-                  6: ['C6'], }
+                  6: ['C6'],
+                  8: ['C1','Fp2'],
+                  11: ['Pz'],
+                  12: ['P2'],
+                  13: ['Iz','Oz','POz'], #is this an issue, they look to be three in a row?
+                  15: ['P3','P9'],
+                  16: ['T7','P2','PO4'],
+                  19: ['C6'],#intermitent spikes
+                  20: ['PO4']}
+# list of epochs to drop because stim missing
+# note: if using with annotations then do annotations first to be sure indexes are correct
+_BAD_EPOCHS = { 1: [0,1],
+                2: [50,51],
+                6: [42,43,46,47,48],
+                8: [45, 47, 49, 50, 52, 55, 57, 59, 60, 62, 64, 65, 66, 67, 68, 69, 70, 71],
+                12: [44,45,46,66],
+                13: [55, 56, 57, 58, 59, 80],
+                15: [65],
+                16: [36,37,38,39,40,41,42,43,44,45,46],
+                18: [10, 11, 35, 36, 37],
+                20: [66, 67, 68, 69, 70, 71, 72, 73, 74, 75]}
+
 # fine adjustment for offset event (if needed)
 _OFFSETS ={}
 
@@ -52,17 +85,24 @@ class Participant:
         self.part_str = str(part_num).zfill(3)
         self.filename = f"P{self.part_str}.bdf"
         self.exclude_channels = []
-        if (part_num in _BAD_CHANNELS):
+        if part_num in _BAD_CHANNELS:
             self.bad_channels =_BAD_CHANNELS[part_num]
         else:
             self.bad_channels = []
-        # default
-        if part_num % 2:
-            self.first_condition = 'shamblock'
-            self.last_condition = 'tvnsblock'
+        if part_num in _BAD_EPOCHS:
+            self.bad_epochs = _BAD_EPOCHS[part_num]
         else:
+            self.bad_epochs = []
+
+        # order of stimulation
+        if part_num % 2 and part_num not in _REVERSE_ORDER:
+            #odd participants
             self.first_condition = 'tvnsblock'
             self.last_condition = 'shamblock'
+        else:
+            self.first_condition = 'shamblock'
+            self.last_condition = 'tvnsblock'
+
         # if events are missing and we have more than 8 pseudo blocks, or bad trials
         self.bad_blocks = part_num in _BAD_EVENTS_BLOCKS
         if part_num in _OFFSETS:
@@ -70,10 +110,31 @@ class Participant:
         else:
             self.stim_offset = _OFFSET
 
-    def get_block_type(self, block_number):
+#True should return normal conditon, false should return the reverse.
+#But what is the normal condition as we have more than 8 blocks
+
+    def get_block_type(self, block_number, current_type = None):
         # false will return the normal condition, use just to exclude an invalid block
-        if self.bad_blocks and _BAD_EVENTS_BLOCKS[self.number][block_number]:
-            return _BAD_EVENTS_BLOCKS[self.number][block_number]
+        if self.bad_blocks:
+            if type(_BAD_EVENTS_BLOCKS[self.number][block_number]) is str:
+                return _BAD_EVENTS_BLOCKS[self.number][block_number]
+            # else must be boolean True so pass
+            elif type(_BAD_EVENTS_BLOCKS[self.number][block_number]) is bool:
+                #first conditon is to switch default if False specified
+                if not current_type:
+                    if not _BAD_EVENTS_BLOCKS[self.number][block_number]:
+                        # wrong block was used reverse default if False, keep same if true
+                        block_number += 1
+                elif _BAD_EVENTS_BLOCKS[self.number][block_number]:
+                    #other conditions work on the last block_start events
+                    return current_type
+                else:
+                    #switch the block type (experimenter error)
+                    if current_type==self.first_condition:
+                        return self.last_condition
+                    else:
+                        return self.first_condition
+
         # default behaviour
         if block_number % 2:
             return self.first_condition
@@ -121,20 +182,28 @@ def get_block_events(event_label, participant):
     # not quite working on p7 or 8, needs to be shorter?
     block_timeout = 50 * sample_rate
     last_event = None
+    # because of problems with missing block start codes we try to identify blocks. these timings are printed useful for creating annotations.
     for event in participant.events:
+        new_block = False
         # use block to work out condition of stim_off event
         # could use my own blocks event to define type including ignore.
         if event[2] == event_id['tvnsblock']:
-            block = 'tvnsblock'
+            # there was a bug in the code so tvns is always sent first, this means even participants (or experimenter error) the codes need reversing
+            block = participant.first_condition #odd runs
         elif event[2] == event_id['shamblock']:
-            block = 'shamblock'
+            block = participant.last_condition #even runs
         if event[2] == event_id[event_label]:
             # check if we are overiding the codes due to missing / experiment issues
             if (participant.bad_blocks):
-                block =participant.get_block_type(len(blocks))
+                block_num = len(blocks)
+                if not any(blocks) or event[0] > last_event[0] + block_timeout:
+                    block_num +=1
+                    new_block=True
+
+                this_block =participant.get_block_type(block_num,block)
                 # can use invalid or nostim or whatever you like to drop events (not a defined event type)
                 if block in event_id:
-                    event[2] += event_id[block]
+                    event[2] += event_id[this_block]
                     off_events.append(event)
             else:
                 event[2] += event_id[block]
@@ -143,7 +212,8 @@ def get_block_events(event_label, participant):
             # find block boundaries for annotations etc
             if len(blocks) == 0:
                 blocks.append([event[0] / sample_rate, 0, 'block_1'])
-            elif event[0] > last_event[0] + block_timeout:
+            elif new_block:
+                # last block timed out, start new block
                 blocks[-1][1] = (last_event[0] / sample_rate) - blocks[-1][0]  # duration
                 blocks.append([event[0] / sample_rate, 0, f'block_{len(blocks) + 1}'])
             last_event = event
@@ -176,21 +246,31 @@ def clean_events(events):
     # print("deduped events" + np.unique(events_deduped[:,2], return_counts='true')
     return events_deduped
 
-def check_stim_artifacts(epochs,show_charts = False):
+def check_stim_artifacts(epochs,participant,show_charts = False):
     # dont alter the original
     epochs_no_stim = epochs.copy()
+    epochs_no_stim.set_channel_types({'EXG7':'eog','EXG8':'eog'})
     # test for stimulation by rejecting all epochs with stim artifact
     reject_criteria = dict(
-        eeg=500e-6,  # 500 µV
+        eog=15e-6,  # 500 µV
     )
+    #if len(participant.bad_epochs):
+    #    print(f"dropping {len(participant.bad_epochs)} epochs marked bad previously")
+    #    epochs_no_stim=epochs_no_stim.drop(participant.bad_epochs)
+
     # this should drop all the epochs
-    epochs_no_stim = epochs_no_stim.drop_bad(reject=reject_criteria)
-    if len(epochs_no_stim.events):
-        if show_charts:
-            epochs_no_stim.plot()
+    epochs_no_stim = epochs_no_stim.drop_bad(reject=reject_criteria) #flat={'eog':10e-6})
+    if len(epochs_no_stim):
         # probably need to warn here
-        print("Did not detect the stimulation artifact in all of the epochs, annotate BAD?: " + str(
-            len(epochs_no_stim.events)))
+        print(f"warning - stimulation artifact not in {len(epochs_no_stim)} epochs, check and add BAD annotations or bad_epochs:")
+        epoch_index = 0
+        for log_line in epochs_no_stim.drop_log:
+            if not log_line:
+                print (f"see epoch {epoch_index}")
+            epoch_index += 1
+        if show_charts:
+            epochs_no_stim.set_channel_types({'EXG7': 'eeg', 'EXG8': 'eeg'})
+            epochs_no_stim.pick_channels(['EXG7', 'EXG8']).plot()
     else:
             print(f"Stim sized artifact found all in all {len(epochs)} epochs")
     return epochs_no_stim
@@ -201,11 +281,18 @@ def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
     print(f"loading participant {participant.number} data {participant.filename}")
     # Read raw EEG file and visually inspect for bad channels
 
-    raw_eeg = mne.io.read_raw_bdf(f"{DATA_DIR}/{participant.filename}")  # Load bdf file to enable re-referencing
+    raw_eeg = mne.io.read_raw_bdf(f"{DATA_DIR}/{participant.filename}",preload=True)  # Load bdf file to enable re-referencing
+
+    #exclude bad channels from stim artificat detection, which is accross all channels
+    raw_eeg.info['bads']=participant.bad_channels
+
     # add annotations for participant due to problems with trials
     annotations = participant.get_annotations()
     if annotations:
         raw_eeg.set_annotations(annotations)
+
+    # band pass filter for stim artifact on artifact channels
+    raw_eeg.filter(24.5, 25.5, fir_design='firwin', picks=mne.pick_channels(raw_eeg.ch_names, ['EXG7', 'EXG8']))
 
     participant.load_clean_events(raw_eeg)
 
@@ -221,6 +308,8 @@ def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
         'tvns/off': 31 + 34,
         'sham/off': 32 + 34}
 
+    print(f"pseudo off event codes {off_event_id}")
+
     print(f"identified {len(off_events)} off events")
     if show_charts:
         mne.viz.plot_events(off_events)
@@ -230,39 +319,49 @@ def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
                                block_annotations[:, 2])
     if show_charts:
     # visual check stim channels (below in epochs)
-    #    raw_eeg.pick_channels(['EXG7', 'EXG8']).plot(events, highpass=20, lowpass=30)
         # show annotations
-        raw_eeg.plot()
+        raw_eeg.plot(events=off_events, event_color={65:'r',66:'y'})
 
     # annotations preceded by BAD epochs are dropped
     epochs = mne.Epochs(raw_eeg, off_events, event_id=off_event_id, tmin=-4, tmax=1, baseline=(None, -3.6),
                detrend=1, preload=True)
+
+    # check stim artifacts will drop _BAD_EPOCHS
+    check_stim_artifacts(epochs, participant, show_charts)
+
+    if participant.bad_epochs:
+        epochs.drop(participant.bad_epochs)
+        print(f'dropped {participant.bad_epochs} epochs from configuration')
+
     # shift event timing to allow for latency from arduino button press
     epochs.shift_time(participant.stim_offset)
 
     if show_charts:
-        epochs.pick_channels(['EXG7','EXG8']).plot()
+        # these alter the epoch object need to use copy() if reusing
+        epochs.pick_channels(['EXG7','EXG8']).plot(events=off_events)
         # allows to check the latency of event
         epochs.pick_channels(['EXG7','EXG8']).average().plot()
-
-    check_stim_artifacts(epochs,show_charts)
+#        epochs.plot(block=True,events=off_events, event_color={65:'r',66:'y'})
 
     return epochs
 
 if __name__ == '__main__':
+    check_all=False
     # get options, default is no charts -p6 -c also switches on charts
     argv=sys.argv[1:]
     if (len(argv)):
         CHARTS=False
         try:
-            opts,args= getopt.getopt(argv,"p:c",["charts="])
+            opts,args= getopt.getopt(argv,"p:c",["charts=","check-all"])
         except:
             print ("invalid command line arguments:")
-            print ("./clean_events -- -p <participant number> [--charts=<y/n>]")
+            print ("./clean_events -- -p <participant number> [--charts=<y/n>] [--check-all]")
             sys.exit()
         for opt, arg in opts:
             if opt == '-h':
                 print("./clean_events -- -p <participant number> [--charts=<y/n>]")
+            elif opt == '--check-all':
+                check_all=True
             elif opt == '-p':
                 SUBJ = int(arg)
             elif opt in ["-c","--charts"]:
@@ -271,5 +370,22 @@ if __name__ == '__main__':
                 else:
                     CHARTS = True
 
-    epochs = check_participant(SUBJ,CHARTS)
-    print (f"good epochs: {len(epochs)}")
+    if check_all:
+        participants = _CHECKED
+    else:
+        participants = [ SUBJ ]
+    results = []
+    for part_num in participants:
+        print(f"STARTING PARTICIPANT {part_num}")
+        epochs = check_participant(part_num,CHARTS)
+        results.append([part_num,len(epochs['tvns/off']),len(epochs['sham/off'])])
+        #print (epochs)
+    print("SUMMARY")
+    print("participant, tvns_epochs, sham_epochs")
+    print("-------------------------------------")
+    print(results)
+    print("-------------------------------------")
+    totals = np.sum(np.array(results), axis=0)[1:]
+    print(f"{len(participants)}, {totals}")
+#    print (f"epochs remaining (_BAD_EPOCHS dropped): {len(epochs)}")
+ #   print(epochs)

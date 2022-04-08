@@ -73,7 +73,7 @@ def pre_process (participant_number, show_charts = False):
     stim_epochs = mne.Epochs(raw_eeg, off_events, off_event_id, tmin=-4, tmax=1, baseline=(None,-3.6), preload=True)
 
     #check for stim artifact in all epochs, problems should be resolved by running clean_events.py and adding BAD_ annotations
-    check_stim_artifacts(stim_epochs)
+    check_stim_artifacts(stim_epochs,participant)
 
     # now drop stim channel
     raw_eeg.drop_channels(['EXG7', 'EXG8']) # drop the stimulation electrodes, remainder are used for EOG artifacts
@@ -87,11 +87,11 @@ def pre_process (participant_number, show_charts = False):
     ###BAND AND NOTCH FILTERS ###
 
     #now bandpass filter
-    filtered_eeg = raw_eeg.filter(0.1, 40., fir_design='firwin')  # Filter between 0.1Hz and 40Hz
+    filtered_eeg = raw_eeg.copy().filter(0.1, 40., fir_design='firwin')  # Filter between 0.1Hz and 40Hz
 
     # remove 25Hz stim artifact and 50Hz mains artifact, iir = butterworth filter
-    filtered_eeg = filtered_eeg.notch_filter([25],method='iir')
-    filtered_eeg = filtered_eeg.notch_filter([50],method='iir') #possibly superflous given the 40Hz lowpass but 50Hz artifact is large
+    filtered_eeg.notch_filter([25],method='iir')
+    filtered_eeg.notch_filter([50],method='iir') #possibly superflous given the 40Hz lowpass but 50Hz artifact is large
 
     #filtered_eeg.plot_psd(area_mode='range',average=False)
     #filtered_eeg.plot()
@@ -171,6 +171,9 @@ def pre_process (participant_number, show_charts = False):
 
     epochs = mne.Epochs(filtered_eeg, off_events, event_id=off_event_id, tmin=tmin, tmax=tmax, baseline=baseline,
                         detrend=1, preload=True)
+
+    # drop the ones without stimulation
+    epochs.drop(participant.bad_epochs)
 
     # adjust for stimulation robot etc latency
     epochs.shift_time(participant.stim_offset)
