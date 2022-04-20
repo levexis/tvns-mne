@@ -1,4 +1,6 @@
 #!/usr/bin/env ipython
+# see https://mne.discourse.group/t/eeg-processing-pipeline-with-autoreject/3443
+# https://autoreject.github.io/stable/auto_examples/plot_auto_repair.html
 
 import matplotlib as plt
 import mne
@@ -18,7 +20,7 @@ plt.use('Qt5Agg')
 
 
 #can set the subject number here if running from an IDE
-SUBJ = 1
+SUBJ = 17
 DATA_DIR = os.path.expanduser('~') + '/win-vr/eegdata'
 CHARTS = False
 
@@ -31,7 +33,10 @@ def pre_process (participant_number, show_charts = False):
     raw_eeg.set_eeg_reference(ref_channels=['EXG5', 'EXG6'])  # Take average of mastoids as reference
     # drop the mastoid reference channels so they don't interfere EOG analysis
     raw_eeg.drop_channels(['EXG5','EXG6'])
+    # interpolate bad channels (note this is also done by autoreject so can maybe remove this)
+    raw_eeg.info['bads'].extend(participant.bad_channels)
     # these require ipython to run or they just crash. Plot accepts (block=True) which fixes that
+
     if show_charts:
         raw_eeg.plot_psd()
         raw_eeg.plot(block=True)
@@ -46,8 +51,6 @@ def pre_process (participant_number, show_charts = False):
     raw_eeg.drop_channels(participant.exclude_channels)  # Define at top if extra channels need to be excluded
     #raw_eeg.plot_sensors(ch_type='eeg')
 
-    # interpolate bad channels (note this is also done by autoreject so can probably remove this
-    raw_eeg.info['bads'].extend(participant.bad_channels)
     # # get an error here, apply later - bug? ValueError: array must not contain infs or NaNs
     # raw_eeg.interpolate_bads()
 
@@ -182,7 +185,13 @@ def pre_process (participant_number, show_charts = False):
 
     ar = AutoReject(random_state=101)
 
-    epochs_clean = ar.fit_transform(epochs)
+    ar = AutoReject(random_state=101).fit(epochs)
+    epochs_clean, reject_log = ar.transform(epochs, return_log=True)
+    if show_charts and any(reject_log.bad_epochs):
+        reject_log.plot('horizontal')
+        epochs[reject_log.bad_epochs].plot(scalings=dict(eeg=100e-6))
+
+#    epochs_clean = ar.fit_transform(epochs)
 #    epochs_clean = epochs
 
     #epochs_clean.plot()

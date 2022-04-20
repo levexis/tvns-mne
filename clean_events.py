@@ -22,17 +22,17 @@ plt.use('Qt5Agg')
 DATA_DIR = os.path.expanduser('~') + '/win-vr/eegdata'
 # these can also be passed in as command line options
 CHARTS = False
-SUBJ = 13
+SUBJ = 21
 
 #default offset for offevent
-_OFFSET=-230/1000
+_OFFSET=-320/1000
 
 #### definition of participant exceptions etc ###
 # list of checked participants, allows validation that each subject has been visually inspected
-_CHECKED = [1,2,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]# 3 & 5 dropped due to insufficient data
+_CHECKED = [1,2,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]# 3 & 5 dropped due to insufficient data
 
 # participants where the order was reversed
-_REVERSE_ORDER = [9,19] #is 9 really reversed?
+_REVERSE_ORDER = [9,19,22]
 # False = default block behaviour
 # invalid will be ignored (bad trial), if block start events are correct then
 # simpler to use annotations to exclude a bad trial and this is then shown on plots
@@ -40,7 +40,7 @@ _REVERSE_ORDER = [9,19] #is 9 really reversed?
 _BAD_EVENTS_BLOCKS = {8: ['shamblock','shamblock','shamblock','shamblock','shamblock','tvnsblock','tvnsblock','tvnsblock', 'tvnsblock', 'shamblock', 'shamblock'],
                       }#9: [False, False, False, False, False, False, False, False, False, False, False, False, False]}
 # can also exclude epochs using annotations
-_ANNOTATIONS = {1 : [[2236,2281-2236,'noisy exclude?']],
+_ANNOTATIONS = {1 : [[2236,2281-2236,'noisy_exclude?']], #is this just high frequency noise?
                 3: [['25.412109375','551.828125','BAD_no_stim_artifact']],
                 9: [[265,605+254-265,'first_run_might_be_the_bad_one'],
                     [994,1489+77-994,'BAD_tvns_loc_incorrect']], #incorrect tvns electrode postion but was the order reversed?
@@ -50,15 +50,20 @@ _ANNOTATIONS = {1 : [[2236,2281-2236,'noisy exclude?']],
                 16: [['852.98828125', '51.279296875', 'BAD_no_stim']]}  # [ startime, duration, 'BAD_reason']
 # bad channels, these will be interpolated
 _BAD_CHANNELS = { 1: ['FT7'],
+                  2: ['PO8'], #breaks ICA - 1 component
                   6: ['C6'],
                   8: ['C1','Fp2'],
                   11: ['Pz'],
-                  12: ['P2'],
+                  12: ['P2','POz'],
                   13: ['Iz','Oz','POz'], #is this an issue, they look to be three in a row?
                   15: ['P3','P9'],
                   16: ['T7','P2','PO4'],
+                  17: [], # outlier in evoked, FT8oftern rejected
                   19: ['C6'],#intermitent spikes
-                  20: ['PO4']}
+                  20: ['FC2','PO4','C6','T7'], #also C6 & T7 also look weird, in fact all the data is very noisy
+                  21: ['P2'],
+                  22: ['FC6'],
+                  23: ['PO4','P2','P4','O2']} #FC6 looks weird on spectrum plot
 # list of epochs to drop because stim missing
 # note: if using with annotations then do annotations first to be sure indexes are correct
 _BAD_EPOCHS = { 1: [0,1],
@@ -70,7 +75,8 @@ _BAD_EPOCHS = { 1: [0,1],
                 15: [65],
                 16: [36,37,38,39,40,41,42,43,44,45,46],
                 18: [10, 11, 35, 36, 37],
-                20: [66, 67, 68, 69, 70, 71, 72, 73, 74, 75]}
+                20: [66, 67, 68, 69, 70, 71, 72, 73, 74, 75],
+                22: [0]}
 
 # fine adjustment for offset event (if needed)
 _OFFSETS ={}
@@ -95,7 +101,8 @@ class Participant:
             self.bad_epochs = []
 
         # order of stimulation
-        if part_num % 2 and part_num not in _REVERSE_ORDER:
+        if part_num % 2 and part_num not in _REVERSE_ORDER \
+                or part_num in _REVERSE_ORDER and not part_num % 2:
             #odd participants
             self.first_condition = 'tvnsblock'
             self.last_condition = 'shamblock'
@@ -292,7 +299,7 @@ def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
         raw_eeg.set_annotations(annotations)
 
     # band pass filter for stim artifact on artifact channels
-    raw_eeg.filter(24.5, 25.5, fir_design='firwin', picks=mne.pick_channels(raw_eeg.ch_names, ['EXG7', 'EXG8']))
+    # raw_eeg.filter(24.5, 25.5, fir_design='firwin', picks=mne.pick_channels(raw_eeg.ch_names, ['EXG7', 'EXG8']))
 
     participant.load_clean_events(raw_eeg)
 
@@ -320,6 +327,7 @@ def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
     if show_charts:
     # visual check stim channels (below in epochs)
         # show annotations
+        # todo: this needs to be cleaned up so we can spot problems, at least a bandpass filter on it.
         raw_eeg.plot(events=off_events, event_color={65:'r',66:'y'})
 
     # annotations preceded by BAD epochs are dropped
@@ -334,7 +342,9 @@ def check_participant(part_number,show_charts,epoch_event = 'stim/off'):
         print(f'dropped {participant.bad_epochs} epochs from configuration')
 
     # shift event timing to allow for latency from arduino button press
-    epochs.shift_time(participant.stim_offset)
+#    epochs.shift_time(participant.stim_offset)
+    # having a look at onset
+    epochs.shift_time(3.6-.5)
 
     if show_charts:
         # these alter the epoch object need to use copy() if reusing
