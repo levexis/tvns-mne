@@ -41,8 +41,12 @@ def format_fig(figure, window_tit,canvas_tit):
 
 #plot topomaps for every 50ms
 times=np.arange(0,1.05,.05)
-format_fig(sham_grand.plot_topomap(times),'Sham Topomap by Time', 'SHAM Evoked')
-format_fig(tvns_grand.plot_topomap(times),'tVNS Topomap by Time', 'tVNS Evoked')
+format_fig(sham_grand.plot_topomap(times),
+           'Sham Topomap by Time',
+           'SHAM Evoked')
+format_fig(tvns_grand.plot_topomap(times),
+           'tVNS Topomap by Time',
+           'tVNS Evoked')
 
 #fig, anim = tvns_grand.animate_topomap(
 #    times=times, ch_type='eeg', frame_rate=2, time_unit='s', blit=False)
