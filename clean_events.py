@@ -52,7 +52,10 @@ _ANNOTATIONS = {1 : [[2236,2281-2236,'noisy_exclude?']], #is this just high freq
 _BAD_CHANNELS = { 1: ['FT7'],
                   2: ['PO8'], #breaks ICA - 1 component
                   6: ['C6'],
+                  7: ['P2'],
                   8: ['C1','Fp2'],
+                  9: ['C6'],
+                  10: ['P2'],
                   11: ['Pz'],
                   12: ['P2','POz'],
                   13: ['Iz','Oz','POz'], #is this an issue, they look to be three in a row?
