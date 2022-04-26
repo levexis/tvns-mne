@@ -10,7 +10,7 @@ import sys
 import getopt
 from autoreject import AutoReject, get_rejection_threshold
 
-from clean_events import Participant, check_stim_artifacts
+from clean_events import Participant, check_stim_artifacts, _CHECKED
 
 from mne.preprocessing import (ICA, create_eog_epochs)
 
@@ -21,6 +21,7 @@ plt.use('Qt5Agg')
 SUBJ = 9
 DATA_DIR = os.path.expanduser('~') + '/win-vr/eegdata'
 CHARTS = True
+ALL = False
 RANDOM_STATE = 101  # Random seed
 
 
@@ -234,11 +235,12 @@ def pre_process(participant_number, show_charts=False):
 
     epochs_clean.save(f'out_epochs/cleaned_stimoff_epoch_sub-{participant.part_str}-epo.fif', overwrite=True)
 
-    ## crop to time period of interest for ERP identification
-    shorter_epochs = epochs_clean.copy().crop(tmin=0, tmax=1, include_tmax=True)
+    # lowpass to 10 for ERP analysis, the lower the filter the longer the data window needs to be
+    shorter_epochs = epochs_clean.copy().filter(None, 10, fir_design='firwin')
 
-    # lowpass to 15 for ERP analysis
-    shorter_epochs.filter(None, 15, fir_design='firwin')
+    ## crop to time period of interest for ERP identification
+    shorter_epochs.crop(tmin=0, tmax=1, include_tmax=True)
+
 
     ## limit to parietal channels for P3
     #    parietal_channels = [channel for channel in epochs.ch_names if 'P' in channel]
@@ -271,7 +273,7 @@ def pre_process(participant_number, show_charts=False):
         format_fig(shorter_epochs['tvns'].plot_psd(fmax=50),'tVNS Power Spectrum')
         # show spectrum power
         # shorter_epochs['tvns'].plot_psd_topomap()
-        format_fig(mne.viz.plot_compare_evokeds(evoked, combine='mean', picks='eeg')[0],'Evoked Comparison with CIs')
+        format_fig(mne.viz.plot_compare_evokeds(evoked, combine='mean', picks='eeg')[0],'Evoked Comparison Parietal Electrodes with CIs')
         # show underlying epochs, need to have participant.bad_epochs to remove a manual ist
         # filtered_eeg.plot_psd()
         format_fig(epochs_clean.plot(picks=picks, events=epochs_clean.events, block=True, scalings=dict(eeg=100e-6)),
@@ -297,7 +299,7 @@ if __name__ == '__main__':
     if (len(argv)):
         CHARTS = False
         try:
-            opts, args = getopt.getopt(argv, "p:c", ["charts="])
+            opts, args = getopt.getopt(argv, "p:c", ["charts=","all"])
         except:
             print("invalid command line arguments:")
             print("eeg_tvns -- -p <participant number> [--charts=<y/n>]")
@@ -312,5 +314,14 @@ if __name__ == '__main__':
                     CHARTS = False
                 else:
                     CHARTS = True
-    print(f"partipant: {SUBJ}, charts: {CHARTS}")
-    pre_process(SUBJ, show_charts=CHARTS)
+            elif opt == '--all':
+                ALL = True
+    if ALL:
+        participants = _CHECKED
+    else:
+        participants = [ SUBJ ]
+    for subj in participants:
+        print(f"partipant: {subj}, charts: {CHARTS}")
+        pre_process(subj, show_charts=CHARTS)
+
+    print (f"Preprocessed {len(participants)} participants")
