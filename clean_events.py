@@ -57,7 +57,7 @@ _BAD_CHANNELS = { 1: ['FT7'],
                   9: ['C6'],
                   10: ['P2'],
                   11: ['Pz'],
-                  12: ['P2','POz'],
+                  12: ['P2','POz','P7','FT7','F7'], #P7,FT7,F7 causing all EOG epochs to be rejected
                   13: ['Iz','Oz','POz'], #is this an issue, they look to be three in a row?
                   15: ['P3','P9'],
                   16: ['T7','P2','PO4'],
