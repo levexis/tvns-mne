@@ -18,7 +18,7 @@ from mne.preprocessing import (ICA, create_eog_epochs)
 plt.use('Qt5Agg')
 
 # can set the subject number here if running from an IDE
-SUBJ = 9
+SUBJ = 12
 DATA_DIR = os.path.expanduser('~') + '/win-vr/eegdata'
 CHARTS = True
 ALL = False
@@ -128,12 +128,18 @@ def pre_process(participant_number, show_charts=False):
     # so hard coding a threshold of 200uV
     # reject_threshold = get_rejection_threshold(stim_epochs, random_state=RANDOM_STATE, ch_types='eog')
 
-    eog_epochs = mne.preprocessing.create_eog_epochs(filtered_eeg, tmin=-1, tmax=1, thresh=200e-6,reject={'eeg': 200e-6})
+    eog_epochs = mne.preprocessing.create_eog_epochs(filtered_eeg, tmin=-1, tmax=1, thresh=200e-6)
 
     front_electrodes = ['Fp1', 'Fpz', 'Fp2', 'AF8', 'AF7', 'AF3', 'AFz', 'AF4', 'AF8']
 
     # just look for artifacts away for eyes
     ar_epochs = eog_epochs.copy().pick_channels([ch for ch in eog_epochs.ch_names if ch not in front_electrodes])
+    #reject bad on selected channels
+    ar_epochs.drop_bad(reject={'eeg': 200e-6})
+    # need to keep eog_epochs same size
+    dropped = [idx for idx in range(len(eog_epochs)) if len(ar_epochs.drop_log[idx])]
+    eog_epochs.drop(dropped, 'pre Autoreject outliers')
+
     auto_reject_pre_ica = AutoReject(random_state=RANDOM_STATE, n_interpolate=[1, 2, 3, 4], n_jobs=1).fit(
         ar_epochs[:200])  # just use first 20 epochs to save time
     #    epochs_ar, reject_log = auto_reject_pre_ica.transform(ar_epochs, n_interpolate=[1,2,3,4], return_log=True)
@@ -197,7 +203,7 @@ def pre_process(participant_number, show_charts=False):
 
     # linear detrended epochs
     epochs = mne.Epochs(filtered_eeg, off_events, event_id=off_event_id, tmin=tmin, tmax=tmax,
-                        baseline=None, preload=True, detrend=1, reject={'eeg': 200e-6})
+                        baseline=None, preload=True, detrend=1)
 
     # Finally, apply the ICA to the epoched data
     #    ica.apply(filtered_eeg)
@@ -216,6 +222,8 @@ def pre_process(participant_number, show_charts=False):
 
     # drop the ones without stimulation
     epochs = epochs.drop(participant.bad_epochs, 'no stim')
+    # now drop the ones with a wild signal as autoreject doesn't always do this
+    epochs.drop_bad(reject={'eeg': 200e-6})
 
     ### AUTOREJECT ####
     ar_post_ica = AutoReject(random_state=RANDOM_STATE).fit(epochs)
