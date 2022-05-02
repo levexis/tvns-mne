@@ -23,7 +23,7 @@ DATA_DIR = os.path.expanduser('~') + '/win-vr/eegdata'
 CHARTS = True
 ALL = False
 RANDOM_STATE = 101  # Random seed
-
+DETREND_EPOCHS = 1
 
 def format_fig(figure, window_tit='', canvas_tit=''):
     if window_tit:
@@ -192,7 +192,7 @@ def pre_process(participant_number, show_charts=False):
 
     # linear detrended epochs
     epochs = mne.Epochs(filtered_eeg, off_events, event_id=off_event_id, tmin=tmin, tmax=tmax,
-                        baseline=None, preload=True, detrend=1)
+                        baseline=None, preload=True, detrend=DETREND_EPOCHS)
 
     # Finally, apply the ICA to the epoched data
     ica.apply(epochs)
@@ -228,9 +228,6 @@ def pre_process(participant_number, show_charts=False):
     ## COMPARE ERPS
     evoked_tvns = shorter_epochs['tvns'].average().detrend(1)
     evoked_sham = shorter_epochs['sham'].average().detrend(1)
-
-    # save evoked
-    mne.write_evokeds(f'out_evoked/evoked_tvns_sham_P{participant.part_str}-ave.fif', [evoked_tvns, evoked_sham])
 
     # mne.viz.plot_compare_evokeds([evoked_tvns, evoked_sham], picks='eeg', combine='mean')
     # with confidence intervals
@@ -278,16 +275,21 @@ if __name__ == '__main__':
     if (len(argv)):
         CHARTS = False
         try:
-            opts, args = getopt.getopt(argv, "p:c", ["charts=","all"])
+            opts, args = getopt.getopt(argv, "p:c", ["charts=","all","detrend="])
         except:
             print("invalid command line arguments:")
-            print("eeg_tvns -- -p <participant number> [--charts=<y/n>]")
+            print("eeg_tvns -- -p <participant number> [--charts=<y/n>] [--detrend=none/0/1")
             sys.exit()
         for opt, arg in opts:
             if opt == '-h':
-                print("eeg-tvns -- -p <participant number> [--charts=<y/n>]")
+                print("eeg-tvns -- -p <participant number> [--charts=<y/n>] [--detrend=none/0/1")
             elif opt == '-p':
                 SUBJ = int(arg)
+            elif opt == '--detrend':
+                if arg == 'none':
+                    DETREND = None
+                else:
+                    DETREND = int(arg)
             elif opt in ["-c", "--charts"]:
                 if arg == "n":
                     CHARTS = False
