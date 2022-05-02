@@ -9,7 +9,9 @@ from scipy import stats
 plt.use('Qt5Agg')
 
 # timing of P3 window
-ERP_TMIN=0.3
+TMIN=0
+TMAX=1
+ERP_TMIN=.3
 ERP_TMAX=.5
 #CHANNELS=['CP3','CP1','CPz','CP2','CP4','P3','P1','Pz','P2','P4','PO3','POz','PO4']
 CHANNELS=['CP1','CPz','CP2','P1','Pz','P2']
@@ -27,8 +29,8 @@ def process_grand():
         evoked = mne.read_evokeds(file)
         print(f'datalen: {len(evoked[0]._data[0])} size: {evoked[0]._size} channels: {len(evoked[0].ch_names)} filename: {file}')
 
-        tvns_evokeds.append(evoked[0].pick_channels(CHANNELS).detrend(1))
-        sham_evokeds.append(evoked[1].pick_channels(CHANNELS).detrend(1))
+        tvns_evokeds.append(evoked[0].pick_channels(CHANNELS))#.detrend(1))
+        sham_evokeds.append(evoked[1].pick_channels(CHANNELS))#.detrend(1))
         tvns_means.append(evoked[0].copy().crop(ERP_TMIN,ERP_TMAX).data.mean())
         sham_means.append(evoked[1].copy().crop(ERP_TMIN,ERP_TMAX).data.mean())
 
@@ -42,7 +44,7 @@ def process_grand():
         return figure
 
     #plot topomaps for every 50ms
-    times=np.arange(0,1.05,.05)
+    times=np.arange(TMIN,TMAX+.05,.05)
     format_fig(sham_grand.plot_topomap(times),
                'Sham Topomap by Time',
                'SHAM Evoked')
