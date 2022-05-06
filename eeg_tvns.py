@@ -186,8 +186,16 @@ def pre_process(participant_number, show_charts=False):
 
 
     # EPOCHS around off_events
-    tmin, tmax = (-4, 1.5)
-    baseline = (-4, -3.6)  # off event
+    #tmin, tmax = (-4, 1.5)
+    #baseline = (-4, -3.6)  # off event
+    # on event appears around 3.1s (0.5s after onset event)
+    tmin, tmax = (-3.5, 2.5)
+    baseline = (None, -3.1)  #baseline to on event, visual inspection of stim channels puts this at 3.1
+
+
+    #testing smaller (1s) epochs with linear detrend
+    #tmin, tmax = (0, 1 - participant.stim_offset)
+    #baseline = (None, -1 * participant.stim_offset)  # off event
 
 
     # linear detrended epochs
@@ -202,7 +210,7 @@ def pre_process(participant_number, show_charts=False):
     epochs.shift_time(participant.stim_offset)  # offset
     # epochs.shift_time(3.6-.5) #comment in for onset
 
-    # dirty epochs, allows charting of what was removed
+    # dirty epochs, allows charting for visual inspection of what was removed
     dirty_epochs = epochs.copy()
 
     # drop the ones without stimulation
@@ -216,24 +224,25 @@ def pre_process(participant_number, show_charts=False):
 
     epochs_clean.save(f'out_epochs/cleaned_stimoff_epoch_sub-{participant.part_str}-epo.fif', overwrite=True)
 
-    # lowpass to 10 for ERP analysis, the lower the filter the longer the data window needs to be
-    shorter_epochs = epochs_clean.copy().filter(None, 10, fir_design='firwin')
-
-    ## crop to time period of interest for ERP identification
-    shorter_epochs.crop(tmin=0, tmax=1, include_tmax=True)
-
-    ## limit to parietal channels for P3 eboked chart
-    parietal_channels = ['CP1', 'CPz', 'CP2', 'P1', 'Pz', 'P2']
-
-    ## COMPARE ERPS
-    evoked_tvns = shorter_epochs['tvns'].average().detrend(1)
-    evoked_sham = shorter_epochs['sham'].average().detrend(1)
-
-    # mne.viz.plot_compare_evokeds([evoked_tvns, evoked_sham], picks='eeg', combine='mean')
-    # with confidence intervals
-    evoked = dict(tvns=list(shorter_epochs['tvns'].pick_channels(parietal_channels).iter_evoked()),
-                  sham=list(shorter_epochs['sham'].pick_channels(parietal_channels).iter_evoked()))
     if CHARTS:
+        # lowpass to 8 for ERP analysis (removing alpha), the lower the filter the longer the data window needs to be
+        shorter_epochs = epochs_clean.copy().filter(None, 8, fir_design='firwin')
+
+        ## crop to time period of interest for ERP identification
+        shorter_epochs.crop(tmin=0, tmax=1, include_tmax=True)
+
+        ## limit to parietal channels for P3 eboked chart
+        parietal_channels = ['CP1', 'CPz', 'CP2', 'P1', 'Pz', 'P2']
+
+        ## COMPARE ERPS
+        evoked_tvns = shorter_epochs['tvns'].average().detrend(1)
+        evoked_sham = shorter_epochs['sham'].average().detrend(1)
+
+        # mne.viz.plot_compare_evokeds([evoked_tvns, evoked_sham], picks='eeg', combine='mean')
+        # with confidence intervals
+        evoked = dict(tvns=list(shorter_epochs['tvns'].pick_channels(parietal_channels).iter_evoked()),
+                      sham=list(shorter_epochs['sham'].pick_channels(parietal_channels).iter_evoked()))
+
         # for interactive functionality to work save needs to come after this
         format_fig(evoked_sham.plot(),'SHAM Evoked Offset')
         # plot 0 to 1 with 50ms steps (inclusive)
