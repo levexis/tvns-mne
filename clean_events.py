@@ -22,10 +22,11 @@ plt.use('Qt5Agg')
 DATA_DIR = os.path.expanduser('~') + '/win-vr/eegdata'
 # these can also be passed in as command line options
 CHARTS = False
-SUBJ = 21
+SUBJ = 17
 
-#default offset for offevent
-_OFFSET=-320/1000
+#default offset for offevent, visual inspection of evoked stim channels shows zero at 320ms but this must be the upper range
+#set to 300 as this is where there is a clear synchronisation of topomaps between conditions.
+_OFFSET=-300/1000
 
 #### definition of participant exceptions etc ###
 # list of checked participants, allows validation that each subject has been visually inspected
@@ -33,12 +34,12 @@ _CHECKED = [1,2,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]# 3 & 5 drop
 
 # participants where the order was reversed
 _REVERSE_ORDER = [9,19,22]
-# False = default block behaviour
+
 # invalid will be ignored (bad trial), if block start events are correct then
 # simpler to use annotations to exclude a bad trial and this is then shown on plots
 # otherwise array length must match define all blocks that are extracted. use 'invalid' to exclude a block.
 _BAD_EVENTS_BLOCKS = {8: ['shamblock','shamblock','shamblock','shamblock','shamblock','tvnsblock','tvnsblock','tvnsblock', 'tvnsblock', 'shamblock', 'shamblock'],
-                      }#9: [False, False, False, False, False, False, False, False, False, False, False, False, False]}
+                      }
 # can also exclude epochs using annotations
 _ANNOTATIONS = {1 : [[2236,2281-2236,'noisy_exclude?']], #is this just high frequency noise?
                 3: [['25.412109375','551.828125','BAD_no_stim_artifact']],
@@ -58,10 +59,10 @@ _BAD_CHANNELS = { 1: ['FT7'],
                   10: ['P2'],
                   11: ['Pz'],
                   12: ['P2','POz','P7','FT7','F7'], #P7,FT7,F7 causing all EOG epochs to be rejected
-                  13: ['Iz','Oz','POz'], #is this an issue, they look to be three in a row?
+                  13: ['Iz','Oz','POz','O2'], #is this an issue, they look to be three in a row?
                   15: ['P3','P9'],
                   16: ['T7','P2','PO4'],
-                  17: [], # outlier in evoked, FT8oftern rejected
+                  #17: ['FT8'], # outlier in evoked, FT8 often rejected
                   19: ['C6'],#intermitent spikes
                   20: ['FC2','PO4','C6','T7'], #also C6 & T7 also look weird, in fact all the data is very noisy
                   21: ['P2'],
@@ -262,7 +263,7 @@ def check_stim_artifacts(epochs,participant,show_charts = False):
     epochs_no_stim.set_channel_types({'EXG7':'eog','EXG8':'eog'})
     # test for stimulation by rejecting all epochs with stim artifact
     reject_criteria = dict(
-        eog=15e-6,  # 500 µV
+        eog=15e-6,  # 150 µV
     )
     #if len(participant.bad_epochs):
     #    print(f"dropping {len(participant.bad_epochs)} epochs marked bad previously")
@@ -365,15 +366,15 @@ if __name__ == '__main__':
     if (len(argv)):
         CHARTS=False
         try:
-            opts,args= getopt.getopt(argv,"p:c",["charts=","check-all"])
+            opts,args= getopt.getopt(argv,"p:c",["charts=","all"])
         except:
             print ("invalid command line arguments:")
-            print ("./clean_events -- -p <participant number> [--charts=<y/n>] [--check-all]")
+            print ("./clean_events -- -p <participant number> [--charts=<y/n>] [--all]")
             sys.exit()
         for opt, arg in opts:
             if opt == '-h':
                 print("./clean_events -- -p <participant number> [--charts=<y/n>]")
-            elif opt == '--check-all':
+            elif opt == '--all':
                 check_all=True
             elif opt == '-p':
                 SUBJ = int(arg)
