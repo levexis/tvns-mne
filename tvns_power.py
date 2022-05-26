@@ -147,17 +147,18 @@ if __name__ == '__main__':
     theta_col = list(df_tvns.columns).index('Theta')
     delta_col = list(df_tvns.columns).index('Delta')
 
-    t_test = stats.ttest_rel(tvns_power[:,alpha_col], sham_power[:,alpha_col])
-    print("dependent Alpha power t-test, tvns > sham:")
-    print(tvns_power[:,alpha_col].mean(),'>',sham_power[:,alpha_col].mean(), t_test)
+    t_test = stats.ttest_rel(tvns_power[:,alpha_col], sham_power[:,alpha_col],alternative="less")
+    print("dependent Alpha power t-test, tvns < sham:")
+    print(tvns_power[:,alpha_col].mean(),'<',sham_power[:,alpha_col].mean(), t_test)
     t_test = stats.ttest_rel(tvns_power[:,theta_col], sham_power[:,theta_col])
-    print("dependent Theta power t-test, tvns > sham:")
-    print(tvns_power[:,theta_col].mean(),'>',sham_power[:,theta_col].mean(), t_test)
+    print("dependent Theta power t-test, <> sham:")
+    print(tvns_power[:,theta_col].mean(),'<>',sham_power[:,theta_col].mean(), t_test)
     t_test = stats.ttest_rel(tvns_power[:,delta_col], sham_power[:,delta_col])
-    print("dependent Delta power t-test, tvns > sham:")
-    print(tvns_power[:,delta_col].mean(),'>',sham_power[:,delta_col].mean(), t_test)
+    print("dependent Delta power t-test, tvns <> sham:")
+    print(tvns_power[:,delta_col].mean(),'<>',sham_power[:,delta_col].mean(), t_test)
     t_test = stats.ttest_rel(tvns_power[:,delta_col]/tvns_power[:,alpha_col], sham_power[:,delta_col]/sham_power[:,alpha_col])
     print(f"Delta to Alpha ratio: {t_test}")
+    print((tvns_power[:,delta_col]/tvns_power[:,alpha_col]).mean(),'<>',(sham_power[:,delta_col]/sham_power[:,alpha_col]).mean())
 
 
 
