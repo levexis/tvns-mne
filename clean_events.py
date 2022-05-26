@@ -25,8 +25,7 @@ CHARTS = False
 SUBJ = 17
 
 #default offset for offevent, visual inspection of evoked stim channels shows zero at 320ms but this must be the upper range
-#set to 300 as this is where there is a clear synchronisation of topomaps between conditions.
-_OFFSET=-300/1000
+_OFFSET=-320/1000
 
 #### definition of participant exceptions etc ###
 # list of checked participants, allows validation that each subject has been visually inspected
