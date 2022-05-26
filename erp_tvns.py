@@ -18,14 +18,16 @@ ERP_TMIN=.3
 ERP_TMAX=.5
 TINT=.05
 CHARTS = False
-TOPOMAPS = True
+TOPOMAPS = False
 DETREND = None
+MAX = False
 #CHANNELS=['CP3','CP1','CPz','CP2','CP4','P3','P1','Pz','P2','P4','PO3','POz','PO4']
 CHANNELS=['CP1','CPz','CP2','P1','Pz','P2']
 #CHANNELS=['Pz']
 #CHANNELS=[] # all channels
 
 def process_grand():
+    print(f"PROCESS GRAND RP_TMIN={ERP_TMIN} {ERP_TMAX}")
     part_files = glob.glob("out_evoked/evoked*ave.fif")
     tvns_evokeds = []
     sham_evokeds = []
@@ -41,8 +43,13 @@ def process_grand():
         else:
             tvns_evokeds.append(evoked[0].pick_channels(CHANNELS)).detrend(DETREND)
             sham_evokeds.append(evoked[1].pick_channels(CHANNELS)).detrend(DETREND)
-        tvns_means.append(evoked[0].copy().crop(ERP_TMIN,ERP_TMAX).data.mean())
-        sham_means.append(evoked[1].copy().crop(ERP_TMIN,ERP_TMAX).data.mean())
+        print(f'cropping for t-test from {ERP_TMIN},{ERP_TMAX}')
+        if MAX:
+            tvns_means.append(evoked[0].copy().crop(ERP_TMIN,ERP_TMAX).data.max())
+            sham_means.append(evoked[1].copy().crop(ERP_TMIN,ERP_TMAX).data.max())
+        else:
+            tvns_means.append(evoked[0].copy().crop(ERP_TMIN,ERP_TMAX).data.mean())
+            sham_means.append(evoked[1].copy().crop(ERP_TMIN,ERP_TMAX).data.mean())
 
 
     tvns_grand=mne.grand_average(tvns_evokeds)
@@ -63,8 +70,9 @@ def process_grand():
             format_fig(tvns_grand.plot_topomap(times),
                        'tVNS Topomap by Time',
                        'tVNS Evoked')
-        fig=mne.viz.plot_compare_evokeds([tvns_grand, sham_grand],picks='eeg', combine='mean',show_sensors=True)
-        format_fig(fig[0],'ERP Comparison',"Orange=Sham, Blue=tVNS")
+        fig=mne.viz.plot_compare_evokeds({'tvns':tvns_grand, 'sham':sham_grand},picks='eeg', combine='mean',show_sensors=True,colors=dict(tvns='orange',sham='green'),
+                                           linestyles=dict(tvns='solid',sham='dotted'))
+        format_fig(fig[0],'ERP Comparison',"Green=Sham, Red=tVNS")
 
 
     #PO sites only
@@ -75,17 +83,19 @@ def process_grand():
     print ('sham means v zeros: ',t_test)
 
     t_test = stats.ttest_rel(tvns_means,sham_means,alternative='greater')
-    print("dependent t-test, tvns > sham:", t_test)
+    print(f"dependent t-test, df={len(tvns_means)-1} tvns > sham ({np.mean(tvns_means)},{np.mean(sham_means)}):", t_test)
+    t_test = stats.ttest_rel(tvns_means,sham_means,alternative='two-sided')
+    print(f"two-way dependent t-test, df={len(tvns_means)-1} tvns <> sham ({np.mean(tvns_means)},{np.mean(sham_means)}):", t_test)
 
 
 if __name__ == '__main__':
     argv = sys.argv[1:]
-    help_mess="./erp_tvns -c [--charts=n] [--topomaps] [--tmin=0.3] [--tmax=0.5] [--tint=.05] [--channels=Pz,Cz/all]"
+    help_mess="./erp_tvns -c [--charts=n] [--topomaps] [--tmin=0] [--tmax=1] [--etmin=0.3] [--etmax=0.5] [--tint=.05] [--max] [--channels=Pz,Cz/all]"
 
     if (len(argv)):
         CHARTS = False
         try:
-            opts, args = getopt.getopt(argv, "p:cf:", ["charts=",'tmin=','tmax=','tint=','topomaps','channels='])
+            opts, args = getopt.getopt(argv, "p:cf:", ["charts=",'etmin=','etmax=','tmin=','tmax=','tint=','topomaps','channels=','max'])
         except:
             print("invalid command line arguments:")
             print(help_mess)
@@ -98,11 +108,17 @@ if __name__ == '__main__':
             elif opt == '--tint':
                 T_INT = float(arg)
             elif opt == '--tmin':
-                T_MIN = float(arg)
+                TMIN = float(arg)
             elif opt == '--tmax':
-                T_MAX = float(arg)
+                TMAX = float(arg)
+            elif opt == '--etmin':
+                ERP_TMIN = float(arg)
+            elif opt == '--etmax':
+                ERP_TMAX = float(arg)
             elif opt == '--topomaps':
                 TOPOMAPS = True
+            elif opt == '--max':
+                MAX = True
             elif opt == '--channels':
                 if arg == 'all':
                     CHANNELS=[]
