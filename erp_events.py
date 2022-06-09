@@ -104,7 +104,7 @@ def process_grand():
 
 if __name__ == '__main__':
     argv = sys.argv[1:]
-    help_mess="./erp_tvns -c [--charts=n] [--topomaps] [--tmin=0] [--tmax=1] [--etmin=0.075] [--etmax=0.15] [--tint=.05] [--max] [--channels=Pz,Cz/all]"
+    help_mess="./erp_events -c [--charts=n] [--topomaps] [--tmin=0] [--tmax=1] [--etmin=0.075] [--etmax=0.15] [--tint=.05] [--max] [--channels=Pz,Cz/all]"
 
     if (len(argv)):
         CHARTS = False

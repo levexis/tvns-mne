@@ -372,7 +372,7 @@ if __name__ == '__main__':
             sys.exit()
         for opt, arg in opts:
             if opt == '-h':
-                print("./clean_events -- -p <participant number> [--charts=<y/n>]")
+                print("./clean_events -- -p <participant number> [--charts=<y/n>] [--all]")
             elif opt == '--all':
                 check_all=True
             elif opt == '-p':
